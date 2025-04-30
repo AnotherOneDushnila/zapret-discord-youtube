@@ -8,6 +8,7 @@ call service.bat check_updates
 echo:
 
 set "BIN=%~dp0bin\"
+set "FAKE=%~dp0bin\fake\"
 set "LISTS=%~dp0lists\"
 
 start "zapret: discord" /min "%BIN%winws.exe" --wf-tcp=443 --wf-udp=443,50000-50100 ^
