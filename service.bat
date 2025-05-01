@@ -27,19 +27,15 @@ if "%1"=="admin" (
 cls
 set "menu_choice=null"
 echo =======================
-echo 1. Install Service
-echo 2. Remove Services
-echo 3. Check Service Status
-echo 4. Run Diagnostics
-echo 5. Check Updates
+echo 1. Remove Services
+echo 2. Check Service Status
+echo 3. Run Diagnostics
 echo 0. Exit
-set /p menu_choice=Enter choice (0-5): 
+set /p menu_choice=Enter choice (0-3): 
 
-if "%menu_choice%"=="1" goto service_install
-if "%menu_choice%"=="2" goto service_remove
-if "%menu_choice%"=="3" goto service_status
-if "%menu_choice%"=="4" goto service_diagnostics
-if "%menu_choice%"=="5" goto service_check_updates
+if "%menu_choice%"=="1" goto service_remove
+if "%menu_choice%"=="2" goto service_status
+if "%menu_choice%"=="3" goto service_diagnostics
 if "%menu_choice%"=="0" exit /b
 goto menu
 
@@ -98,174 +94,6 @@ sc delete "WinDivert"
 net stop "WinDivert14"
 sc delete "WinDivert14"
 
-pause
-goto menu
-
-
-:: INSTALL =============================
-:service_install
-cls
-chcp 65001 > nul
-
-:: Main
-cd /d "%~dp0"
-set "BIN_PATH=%~dp0bin\"
-set "LISTS_PATH=%~dp0lists\"
-
-:: Searching for .bat files in current folder, except files that start with "service"
-echo Pick one of the options:
-set "count=0"
-for %%f in (*.bat) do (
-    set "filename=%%~nxf"
-    if /i not "!filename:~0,7!"=="service" if /i not "!filename:~0,17!"=="cloudflare_switch" (
-        set /a count+=1
-        echo !count!. %%f
-        set "file!count!=%%f"
-    )
-)
-
-:: Choosing file
-set "choice="
-set /p "choice=Input file index (number): "
-if "!choice!"=="" goto :eof
-
-set "selectedFile=!file%choice%!"
-if not defined selectedFile (
-    echo Invalid choice, exiting...
-    pause
-    goto menu
-)
-
-:: Args that should be followed by value
-set "args_with_value=sni"
-
-:: Parsing args (mergeargs: 2=start param|3=arg with value|1=params args|0=default)
-set "args="
-set "capture=0"
-set "mergeargs=0"
-set QUOTE="
-
-for /f "tokens=*" %%a in ('type "!selectedFile!"') do (
-    set "line=%%a"
-
-    echo !line! | findstr /i "%BIN%winws.exe" >nul
-    if not errorlevel 1 (
-        set "capture=1"
-    )
-
-    if !capture!==1 (
-        if not defined args (
-            set "line=!line:*%BIN%winws.exe"=!"
-        )
-
-        set "temp_args="
-        for %%i in (!line!) do (
-            set "arg=%%i"
-
-            if not "!arg!"=="^" (
-                if "!arg:~0,2!" EQU "--" if not !mergeargs!==0 (
-                    set "mergeargs=0"
-                )
-
-                if "!arg:~0,1!" EQU "!QUOTE!" (
-                    set "arg=!arg:~1,-1!"
-
-                    echo !arg! | findstr ":" >nul
-                    if !errorlevel!==0 (
-                        set "arg=\!QUOTE!!arg!\!QUOTE!"
-                    ) else if "!arg:~0,1!"=="@" (
-                        set "arg=\!QUOTE!@%~dp0!arg:~1!\!QUOTE!"
-                    ) else if "!arg:~0,5!"=="%%BIN%%" (
-                        set "arg=\!QUOTE!!BIN_PATH!!arg:~5!\!QUOTE!"
-                    ) else if "!arg:~0,7!"=="%%LISTS%%" (
-                        set "arg=\!QUOTE!!LISTS_PATH!!arg:~7!\!QUOTE!"
-                    ) else (
-                        set "arg=\!QUOTE!%~dp0!arg!\!QUOTE!"
-                    )
-                )
-                
-                if !mergeargs!==1 (
-                    set "temp_args=!temp_args!,!arg!"
-                ) else if !mergeargs!==3 (
-                    set "temp_args=!temp_args!=!arg!"
-                    set "mergeargs=1"
-                ) else (
-                    set "temp_args=!temp_args! !arg!"
-                )
-
-                if "!arg:~0,2!" EQU "--" (
-                    set "mergeargs=2"
-                ) else if !mergeargs!==2 (
-                    set "mergeargs=1"
-                ) else if !mergeargs!==1 (
-                    for %%x in (!args_with_value!) do (
-                        if /i "%%x"=="!arg!" (
-                            set "mergeargs=3"
-                        )
-                    )
-                )
-            )
-        )
-
-        if not "!temp_args!"=="" (
-            set "args=!args! !temp_args!"
-        )
-    )
-)
-
-:: Creating service with parsed args
-set ARGS=%args%
-echo Final args: !ARGS!
-set SRVCNAME=zapret
-
-net stop %SRVCNAME% >nul 2>&1
-sc delete %SRVCNAME% >nul 2>&1
-sc create %SRVCNAME% binPath= "\"%BIN_PATH%winws.exe\" %ARGS%" DisplayName= "zapret" start= auto
-sc description %SRVCNAME% "Zapret DPI bypass software"
-sc start %SRVCNAME%
-
-pause
-goto menu
-
-
-:: CHECK UPDATES =======================
-:service_check_updates
-chcp 437 > nul
-
-:: Set current version and URLs
-set "GITHUB_VERSION_URL=https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/.service/version.txt"
-set "GITHUB_RELEASE_URL=https://github.com/Flowseal/zapret-discord-youtube/releases/tag/"
-set "GITHUB_DOWNLOAD_URL=https://github.com/Flowseal/zapret-discord-youtube/releases/latest/download/zapret-discord-youtube-"
-
-:: Get the latest version from GitHub
-for /f "delims=" %%A in ('powershell -command "(Invoke-WebRequest -Uri \"%GITHUB_VERSION_URL%\" -Headers @{\"Cache-Control\"=\"no-cache\"} -TimeoutSec 5).Content.Trim()" 2^>nul') do set "GITHUB_VERSION=%%A"
-
-:: Error handling
-if not defined GITHUB_VERSION (
-    echo Error: Failed to fetch the latest version. Check your internet connection
-    pause
-    goto menu
-)
-
-:: Version comparison
-if "%LOCAL_VERSION%"=="%GITHUB_VERSION%" (
-    echo Latest version installed: %LOCAL_VERSION%
-) else (
-    echo New version available: %GITHUB_VERSION%
-    echo Release page: %GITHUB_RELEASE_URL%%GITHUB_VERSION%
-    
-    set "CHOICE="
-    set /p "CHOICE=Do you want to automatically download the new version? (Y/N) (default: Y) "
-    if "!CHOICE!"=="" set "CHOICE=Y"
-    if "!CHOICE!"=="y" set "CHOICE=Y"
-
-    if /i "!CHOICE!"=="Y" (
-        echo Opening the download page...
-        start "" "%GITHUB_DOWNLOAD_URL%%GITHUB_VERSION%.rar"
-    )
-)
-
-if "%1"=="soft" exit /b 
 pause
 goto menu
 
