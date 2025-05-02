@@ -11,7 +11,7 @@ if "%1"=="admin" (
     exit /b
 )
 
-set "STARTUP_PATH=%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup"
+set "STARTUP_PATH=%ALLUSERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup"
 
 cd /d "%~dp0"
 
