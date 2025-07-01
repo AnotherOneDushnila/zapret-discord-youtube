@@ -1,9 +1,11 @@
-@echo off
+@REM @echo off
 chcp 65001 > nul
 :: 65001 - UTF-8
 
 cd /d "%~dp0"
-call service_status.bat zapret
+echo %BIN%
+call service.bat :from_where
+call service.bat status_zapret
 echo:
 
 set "BIN=%~dp0bin\"
