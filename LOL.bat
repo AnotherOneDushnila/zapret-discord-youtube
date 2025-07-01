@@ -3,8 +3,6 @@ chcp 65001 > nul
 :: 65001 - UTF-8
 
 cd /d "%~dp0"
-echo %BIN%
-call service.bat :from_where
 call service.bat status_zapret
 echo:
 
@@ -12,7 +10,7 @@ set "BIN=%~dp0bin\"
 set "FAKE=%~dp0bin\fake\"
 set "LISTS=%~dp0lists\"
 
-start "zapret: LOL" /min "%BIN%winws.exe" --wf-tcp=80,443,2099,8393-8400,5222,5223 --wf-udp=443,50000-50100 ^
+start "zapret: %~n0" /min "%BIN%winws.exe" --wf-tcp=80,443,2099,8393-8400,5222,5223 --wf-udp=443,50000-50100 ^
 --filter-udp=443 --hostlist="%LISTS%list-general.txt" --dpi-desync=fake --dpi-desync-repeats=6 --dpi-desync-fake-quic="%FAKE%quic_initial_www_google_com.bin" --new ^
 --filter-udp=50000-50100 --ipset="%LISTS%list-discord.txt" --dpi-desync=fake --dpi-desync-any-protocol --dpi-desync-cutoff=d3 --dpi-desync-repeats=6 --new ^
 --filter-tcp=80 --hostlist="%LISTS%list-general.txt" --dpi-desync=fake,split2 --dpi-desync-autottl=2 --dpi-desync-fooling=md5sig --new ^
