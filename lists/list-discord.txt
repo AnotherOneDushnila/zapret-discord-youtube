@@ -23,3 +23,7 @@ discordsez.com
 discord-activities.com
 discordactivities.com
 stable.dl2.discordapp.net
+cdn.discordapp.com
+gateway.discord.gg
+images-ext-1.discordapp.net
+media.discordapp.net

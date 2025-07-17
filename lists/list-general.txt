@@ -22,6 +22,10 @@ discordmerch.com
 discordpartygames.com
 discordsays.com
 discordsez.com
+cdn.discordapp.com
+gateway.discord.gg
+images-ext-1.discordapp.net
+media.discordapp.net
 ggpht.com
 googlevideo.com
 jnn-pa.googleapis.com
@@ -55,8 +59,12 @@ pvp.net
 rgpub.io
 riotcdn.com
 riotcdn.net
+data.riotgames.com
+telemetry.sgp.pvp.net
 riotgames.com
 riotgames.es
+riot-geo.pas.si.riotgames.com
+wildrift.secure.dyn.riotcdn.net
 seasonvar.ru
 stable.dl2.discordapp.net
 valorant.scd.riotcdn.net
