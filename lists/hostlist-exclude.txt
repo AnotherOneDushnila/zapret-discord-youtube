@@ -1,0 +1,3 @@
+steampipe.akamaized.net
+lancache.steamcontent.com
+steamcloudsweden.blob.core.windows.net
