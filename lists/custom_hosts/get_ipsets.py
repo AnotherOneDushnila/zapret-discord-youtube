@@ -4,23 +4,42 @@ import re
 
 
 
-def get_ips(domain_list_path: str) -> str:
+def get_ips(domain_list_path: str, os: str) -> str:
     try:
         with open(domain_list_path, "r", encoding="utf-8") as file:
             domains = [line.strip() for line in file if line.strip()]
         
         output = ""
-        for domain in domains:
-            result = subprocess.run(
-                ['powershell', '-Command', f"nslookup {domain}"],
-                capture_output=True, text=True, check=True
-            )
+        
+        if os == "w":
+            for domain in domains:
+                result = subprocess.run(
+                    ['powershell', '-Command', f"nslookup {domain}"],
+                    capture_output=True, text=True, check=True
+                )
 
-            time.sleep(2)
+                time.sleep(2)
 
-            output += str(result.stdout)
+                output += str(result.stdout)
 
-        return output
+            return output
+        
+        elif os in "ml":
+            for domain in domains:
+                result = subprocess.run(
+                    ["nslookup", domain],
+                    capture_output=True, text=True, check=True
+                )
+
+                time.sleep(2)
+
+                output += str(result.stdout)
+
+            return output
+        
+        else:
+            raise ValueError("Invalid OS choice. Use 'w' for Windows, 'l' for Linux or 'm' for MacOS.")
+       
 
     except subprocess.CalledProcessError as e:
         return f"Error occurred: {e}\nError log: {e.stderr}"
@@ -48,7 +67,8 @@ def log_formatter(log: str) -> None:
 
 def main() -> None:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    log = get_ips("blocked-hosts-rtk.txt")
+    os_check = input("Enter the first letter of name of your OS (Linux/Windows/MacOS): ").strip().lower()
+    log = get_ips("blocked-hosts-rtk.txt", os_check)
     log_formatter(log)
 
 
