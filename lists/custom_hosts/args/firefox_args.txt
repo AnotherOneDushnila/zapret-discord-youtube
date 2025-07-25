@@ -1,0 +1,3 @@
+--headless=new
+--no-sandbox
+--log-level=3

@@ -12,6 +12,8 @@ youtu.be
 yt-video-upload.l.google.com
 ytimg.com
 ytimg.l.google.com
+i.ytimg.com
+rr1---sn-aigzrnld.googlevideo.com
 cloudflare-ech.com
 dis.gd
 discord-attachments-uploads-prd.storage.googleapis.com

@@ -1,0 +1,4 @@
+--headless=new
+--disable-gpu
+--no-sandbox
+--log-level=3
