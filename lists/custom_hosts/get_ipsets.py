@@ -4,7 +4,24 @@ import re
 
 
 
-def get_ips(domain_list_path: str, os: str) -> str:
+def find_file(filename: str, max_depth: int = 2) -> str:
+    current_dir = os.path.abspath(os.curdir)
+    for _ in range(max_depth):
+        candidate = os.path.join(current_dir, filename)
+        if os.path.isfile(candidate):
+            return candidate
+        current_dir = os.path.dirname(current_dir)
+    raise FileNotFoundError(f"File '{filename}' not found within {max_depth} directory levels upward.")
+
+
+def get_ips(filename: str, os: str) -> tuple[str, str] | tuple[None, None]:
+    try:
+        domain_list_path = find_file(filename)
+
+    except FileNotFoundError as e:
+        print(e)
+        return None, None
+    
     try:
         with open(domain_list_path, "r", encoding="utf-8") as file:
             domains = [line.strip() for line in file if line.strip()]
@@ -22,7 +39,7 @@ def get_ips(domain_list_path: str, os: str) -> str:
 
                 output += str(result.stdout)
 
-            return output
+            return output, domain_list_path
         
         elif os in "ml":
             for domain in domains:
@@ -35,18 +52,20 @@ def get_ips(domain_list_path: str, os: str) -> str:
 
                 output += str(result.stdout)
 
-            return output
+            return output, domain_list_path
         
         else:
             raise ValueError("Invalid OS choice. Use 'w' for Windows, 'l' for Linux or 'm' for MacOS.")
-       
+    
 
     except subprocess.CalledProcessError as e:
         return f"Error occurred: {e}\nError log: {e.stderr}"
+        
 
 
-def log_formatter(log: str) -> None:
+def log_formatter(log: str, domain_list_path: str) -> None:
     excluded_ips = {'1.1.1.1', '8.8.8.8', '8.8.4.4'}
+    output_file = os.path.join(os.path.dirname(domain_list_path), f"ipset-{os.path.basename(domain_list_path)}")
 
     ip_pattern = re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b')
     ips = sorted(
@@ -58,18 +77,21 @@ def log_formatter(log: str) -> None:
     cidrs = list(ipaddress.collapse_addresses(ip_objects))
 
     
-    with open("rename-this-ipset.txt", "w", encoding="utf-8") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         for cidr in sorted(cidrs, reverse=True):
             f.write(str(cidr) + "\n")
 
-    print(f"Extracted {len(ips)} IPs into {len(cidrs)} CIDR blocks. Saved to rename-this-ipset.txt")
+    print(f"Extracted {len(ips)} IPs into {len(cidrs)} CIDR blocks. Saved to ipset-{os.path.basename(domain_list_path)}")
 
 
 def main() -> None:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    filename = input("Enter the filename to get IPs from (default: 'blocked-hosts.txt'): ").strip()
     os_check = input("Enter the first letter of name of your OS (Linux/Windows/MacOS): ").strip().lower()
-    log = get_ips("blocked-hosts-rtk.txt", os_check)
-    log_formatter(log)
+    
+    log, domain_list_path = get_ips(filename, os_check)
+    if log and domain_list_path:
+        log_formatter(log, domain_list_path)
 
 
 if __name__ == "__main__":

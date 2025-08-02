@@ -8,7 +8,6 @@ from typing import List, Any
 
 
 
-
 def get_response(browser: str) -> List[str]:
     browser_options = Options()
     all_domains = []
