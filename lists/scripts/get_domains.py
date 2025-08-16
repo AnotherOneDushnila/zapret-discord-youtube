@@ -1,11 +1,15 @@
-import os, time
+import time, logging
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import WebDriverException
-from typing import List, Any
+from typing import List, Any, Optional, Dict
+from service import Service
 
+
+service = Service("domains")
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 
 
 def get_response(browser: str) -> List[str]:
@@ -30,7 +34,6 @@ def get_response(browser: str) -> List[str]:
         browser_options.add_argument(f"user-agent={user_agent}")
 
 
-    all_domains = []
     HOSTS = input("Enter the host(s), separated by space (without protocol): ").split()
 
 
@@ -40,7 +43,7 @@ def get_response(browser: str) -> List[str]:
         for host in HOSTS:
             url = f"https://{host}"
             try:
-                print(f"\nVisiting {url}...")
+                logging.info(f"\nVisiting {url}...")
                 driver.get(url)
 
                 WebDriverWait(driver, 10).until(
@@ -60,18 +63,32 @@ def get_response(browser: str) -> List[str]:
                     return Array.from(domainSet);
                 """)
 
-                print(f"Found domains on {host}: {domains}")
+                logging.info(f"Found domains on {host}: {domains}")
                 all_domains.extend(domains)
 
             except WebDriverException as e:
-                print(f"Failed to load {url}: {e}")
+                logging.exception(f"Failed to load {url}: {e}", exc_info=True)
 
     finally:
         unique_domains = sorted(set(all_domains))
         driver.quit()
 
-    print(f"\nTotal unique domains found: {len(unique_domains)}")
+    logging.info(f"\nTotal unique domains found: {len(unique_domains)}")
     return unique_domains
+
+
+
+def get_hosts(filename) -> List[str]:
+    path = service.find_file(filename)
+
+    with open(path, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f.readlines()]
+    
+    if len(lines) > 0:
+        return lines
+
+    logging.error("Hostlist file is empty! No hosts returned.")
+    raise ValueError("File is empty!")
 
 
 def get_user_agent(url) -> str:
@@ -80,11 +97,11 @@ def get_user_agent(url) -> str:
         response.raise_for_status()  
         return response.request.headers['User-Agent']
     except requests.exceptions.RequestException as e:
-        print(f"Error occured: {e}")
+        logging.exception(f"Request exeption", exc_info=True)
         return None
 
 
-def setup_browser(browser: str) -> Any:
+def setup_browser(browser: str) -> Optional[Dict[str, Any]]:
     browser_configs = {
         "chrome": {
             "driver": webdriver.Chrome,
@@ -105,7 +122,7 @@ def setup_browser(browser: str) -> Any:
     }
 
     if browser not in browser_configs:
-        print(f"Browser '{browser}' not recognized. Please, try again.")
+        logging.info(f"Browser '{browser}' not recognized. Please, try again.")
         return None
 
     config = browser_configs[browser]
@@ -114,17 +131,16 @@ def setup_browser(browser: str) -> Any:
 
     
 def r2txt(domains: List[str]) -> None:
-    with open("blockcheck-args-list.txt", "w", encoding="utf-8") as f:
+    with open("bc-args-list.txt", "w", encoding="utf-8") as f:
         for domain in domains:
             f.write(domain + " ")
 
 
 def main() -> None:
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    browser = input("Enter the browser to use (e.g., 'chrome'): ").strip().lower()
-    domains = get_response(browser)
+    args = service.argparse().parse_args()
+    domains = get_response(args.browser)
     r2txt(domains)
-    print("\nSaved to blockcheck-args-list.txt")
+    logging.info("\nSaved to bc-args-list.txt")
     
 
 

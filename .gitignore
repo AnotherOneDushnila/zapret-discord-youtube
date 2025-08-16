@@ -3,5 +3,9 @@ bin/cygwin/tmp
 custom/
 test.bat
 blockcheck/LM
-lists/custom_hosts/blockcheck-args-list.txt
-lists/custom_hosts/blocked-hosts-rtk.txt
+lists/scripts/bc-args-list.txt
+lists/blocked-hosts-rtk.txt
+lists/scripts/old/
+lists/scripts/README.md
+**venv
+**__pycache__
