@@ -6,6 +6,7 @@ blockcheck/LM
 lists/scripts/bc-args-list.txt
 lists/blocked-hosts-rtk.txt
 lists/scripts/old/
+lists/scripts/cidr_cache.json
 lists/scripts/README.md
 **venv
 **__pycache__

@@ -1,18 +1,21 @@
 import os
 import argparse
-from typing import Callable, Tuple, List, Optional
+from typing import Callable
 from functools import wraps
 import logging
 
 
 class Service:
 
+
     def __init__(self, service_name: str) -> None:
         self.service_name = service_name.lower()
 
+
     def __str__(self):
-        pass
+        return f"Service({self.service_name})"
         
+
     def argparse(self) -> argparse.ArgumentParser:
         if self.service_name == "ipset":
             parser = argparse.ArgumentParser(
@@ -20,9 +23,32 @@ class Service:
             )
 
             parser.add_argument(
+                '-ch',
+                '--cache',
+                action='store_true',
+                help="Enable cache"
+            )
+
+            parser.add_argument(
+                "-tm",
+                '--testmode',
+                default='comparsion',
+                type=str,
+                help="Enable and choose testmode ('nslookup')"
+            )
+
+            parser.add_argument(
+                "-pn",
+                "--port_number",
+                default=2099,
+                type=int,
+                help="Port number value, if port mode enabled"
+            )
+
+
+            parser.add_argument(
                 "-f", 
                 dest="filename",
-                required=True,
                 default="blocked-hosts.txt",
                 help="File with domains to resolve (default: blocked-hosts.txt)"
             )
@@ -30,9 +56,9 @@ class Service:
             parser.add_argument(
                 "-m",
                 dest="mode",
-                choices=["1", "2"],
+                choices=["1", "2", "3"],
                 required=True,
-                help="Mode: 1 = deduplicate & sort, 2 = resolve & update ipset"
+                help="Mode: 1 = deduplicate & sort, 2 = resolve & update ipset, 3 = get ip addres using external port"
             )
 
 
@@ -90,7 +116,7 @@ class Service:
             )
 
         elif self.service_name == "dup-hosts":
-            parser = argparse.ArgumentParser(
+            parser = argparse.ArgumentParser (
             description="Hostlist deduplicator"
             )
 

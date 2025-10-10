@@ -13,6 +13,8 @@ priority_substrings = [
     "youtu",
     "google",
     "discord",
+    "t",
+    "tel",
     "cloudflare",
     "riot",
     "valorant",
@@ -22,38 +24,33 @@ priority_substrings = [
 
 
 @service.log_file_change
-def remove_duplicates(filename: str) -> None:
+def remove_duplicates(filepath: str) -> None:
     def sort_key(line: str) -> Tuple[int, str]:
         for index, substring in enumerate(priority_substrings):
             if substring in line:
                 return (index, line)
         return (len(priority_substrings), line)
     
-    try:
-        file = service.find_file(filename)
-    except FileNotFoundError as e:
-        logging.error("File was not found!", exc_info=True)
-        return
-    
-    with open(file, "r", encoding="utf-8") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         lines = f.read().splitlines()
 
     unique = list(set(lines))
 
-    if  len(lines) - len(unique) > 0:
+    if len(lines) - len(unique) > 0:
         unique.sort(key=sort_key)
-        with open(file, "w", encoding="utf-8") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             for line in unique:
                 if line.strip():  
                     f.write(line + "\n")
     else:
-        return
+        return None
 
 
 def main() -> None:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    args = service.argparse()
-    remove_duplicates(args.filename)
+    args = service.argparse().parse_args()
+    filepath = service.find_file(args.filename)
+    remove_duplicates(filepath)
 
 
 if __name__ == "__main__":

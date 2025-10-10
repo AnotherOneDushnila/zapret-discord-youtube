@@ -3,9 +3,11 @@ import subprocess, logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import asyncio, aiohttp
 import json
-import ipaddress
+import ipaddress, psutil, socket
 from typing import Tuple, List, Optional, Set, Union
 from service import Service
+
+
 
 
 CIDR_CACHE_FILE = "cidr_cache.json"
@@ -14,7 +16,7 @@ logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 
 
 
-def nslookup(cmd: List[str]) -> str:
+def run_proc(cmd: List[str]) -> str:
     try:
         res = subprocess.run(cmd, capture_output=True, text=True)
         return res.stdout if res.returncode == 0 else ""
@@ -23,7 +25,7 @@ def nslookup(cmd: List[str]) -> str:
         return ""
 
 
-def resolve_domains(domain_file: str, os_type: str, ipv_mode: str) -> Tuple[Optional[str], Optional[str]]:
+def resolve_domains(domain_file: str, os_type: str, ipv_mode: str, testmode: str) -> Tuple[Optional[str], Optional[str]]:
     try:
         domain_list_path = service.find_file(domain_file)
     except FileNotFoundError as e:
@@ -36,23 +38,39 @@ def resolve_domains(domain_file: str, os_type: str, ipv_mode: str) -> Tuple[Opti
             cmds = []
 
             for domain in domains:
-                if os_type == "w":
-                    if ipv_mode in ("1", "3"):
-                        cmds.append(["powershell", "-Command", f"nslookup -type=A {domain}"])
-                    if ipv_mode in ("2", "3"):
-                        cmds.append(["powershell", "-Command", f"nslookup -type=AAAA {domain}"])
-                elif os_type in ("m", "l"):
-                    if ipv_mode in ("1", "3"):
-                        cmds.append(["nslookup", "-type=A", domain])
-                    if ipv_mode in ("2", "3"):
-                        cmds.append(["nslookup", "-type=AAAA", domain])
+                if testmode == 'nslookup':
+                    if os_type == "w":
+                        if ipv_mode in ("1", "3"):
+                            cmds.append(["powershell", "-Command", f"nslookup -type=A {domain}"])
+                        if ipv_mode in ("2", "3"):
+                            cmds.append(["powershell", "-Command", f"nslookup -type=AAAA {domain}"])
+                    elif os_type in ("m", "l"):
+                        if ipv_mode in ("1", "3"):
+                            cmds.append(["nslookup", "-type=A", domain])
+                        if ipv_mode in ("2", "3"):
+                            cmds.append(["nslookup", "-type=AAAA", domain])
+                    else:
+                        logging.error("Invalid OS type. Use 'w' (Windows), 'l' (Linux) or 'm' (macOS).")
+                        return None, None
+                
+                # TODO: format curl outuput & maybe add curl support to get_domains
+                # elif testmode == "curl":
+                #     if os_type == 'w':
+                #         cmds.append(["curl", "-svo", "NULL", f"https://{domain}"])
+                #     elif os_type in ("m", "l"):
+                #         cmds.append(["curl", "-svo", "/dev/null", f"https://{domain}"])
+                #     else:
+                #         logging.error("Invalid OS type. Use 'w' (Windows), 'l' (Linux) or 'm' (macOS).")
+                #         return None, None
+
                 else:
-                    logging.error("Invalid OS type. Use 'w' (Windows), 'l' (Linux) or 'm' (macOS).")
+                    logging.error("Invalid testmode type! Choose from ('nslookup', 'curl', 'comparsion').")
                     return None, None
+
 
             output = ""
             with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = [executor.submit(nslookup, cmd) for cmd in cmds]
+                futures = [executor.submit(run_proc, cmd) for cmd in cmds]
                 for future in as_completed(futures):
                     output += future.result()
 
@@ -71,19 +89,24 @@ def load_cache_from_disk() -> dict[str, List[str]]:
 
 
 def save_cache_to_disk(cache: dict[str, List[str]]):
-    with open(CIDR_CACHE_FILE, "w", encoding="utf-8") as f:
+    flag = "a" if os.path.exists(f"./{CIDR_CACHE_FILE}") else "w"
+    with open(CIDR_CACHE_FILE, mode = flag, encoding="utf-8") as f:
         json.dump(cache, f, indent=2)
 
 
-async def get_cidrs(ips: List[str]) -> Set[str]:
+async def get_cidrs(ips: List[str], cache_flag: bool) -> Set[str]:
     results = []
-    cache = load_cache_from_disk()
+
+    if cache_flag:
+        cache = load_cache_from_disk()   
+    else:
+        cache = None
 
     async def fetch(ip: str, session: aiohttp.ClientSession) -> List[str]:
         key = f"cidr:{ip}"
         
-        if ip in cache:
-            logging.debug(f"[REDIS CACHE] CIDRs for {ip} found and executed.")
+        if cache and ip in cache:
+            logging.debug(f"[CACHE] CIDRs for {ip} found and executed.")
             return json.loads(cache[key])
         
         url = f"https://rdap.db.ripe.net/ip/{ip}"
@@ -98,7 +121,10 @@ async def get_cidrs(ips: List[str]) -> Set[str]:
                 cidrs = [f"{entry['v4prefix']}/{entry['length']}" for entry in cidr_entries if 'v4prefix' in entry] + \
                          [f"{entry['v6prefix']}/{entry['length']}" for entry in cidr_entries if 'v6prefix' in entry]
                 
-                cache[key] = cidrs
+                if cache_flag:
+                    if key not in cache:
+                        cache[key] = cidrs
+
                 return cidrs
             
         except Exception:
@@ -111,9 +137,50 @@ async def get_cidrs(ips: List[str]) -> Set[str]:
             for cidr in cidrs:
                 results.append(cidr)
 
-    save_cache_to_disk(cache)
+    if cache_flag:
+        save_cache_to_disk(cache)
     
     return set(results)
+
+
+def get_port(port: int) -> Optional[List[str]]:
+    result = set()
+    try:
+        for conn in psutil.net_connections(kind='inet'):
+            if conn.raddr and conn.status == psutil.CONN_ESTABLISHED:
+                if conn.raddr[1] == port:
+                    result.add(conn.raddr[0])
+    except Exception as e:
+        logging.error(f"Error getting port connections: {e}", exc_info=True)
+        return None
+    return list(result)
+
+
+def ip2host(ips: List[str], port: int, filename: str = "port_connections.txt") -> Optional[str]:
+    seen = set()
+    output_lines = []
+
+    for ip in ips:
+        try:
+            domain = socket.gethostbyaddr(ip)[0]
+            logging.info(f"{ip} resolved to {domain}")
+        except Exception:
+            domain = None
+            logging.debug(f"Could not resolve {ip}")
+
+        line = f"{domain} : {ip} : {port}" if domain else f"{ip} : {port}"
+        if line not in seen:
+            seen.add(line)
+            output_lines.append(line)
+
+    if output_lines:
+        with open(filename, "a", encoding="utf-8") as f:
+            for line in output_lines:
+                f.write(line + "\n")
+
+        logging.info(f"Saved {len(output_lines)} connection(s) to {filename}")
+    else:
+        logging.info("No new connections to save.")
 
 
 @service.log_file_change
@@ -140,7 +207,7 @@ def sort_ips(array: set[str]) -> List[str]:
     return sorted(array, key=parse)
 
 
-def separate_ips(log: str, ipv_mode: str) -> Optional[Union[List[str], List[str]]]:
+def separate_ips(log: str, ipv_mode: str, type: str) -> Optional[Union[List[str], List[str]]]:
     excluded_ips = {'1.1.1.1', '8.8.8.8', '8.8.4.4', '192.168.0.1'}
     ipv6_list, ipv4_list = [], []
 
@@ -281,13 +348,13 @@ def process_ips(log: str, domain_list_path: str, ipv_mode: str) -> None:
         raise ValueError("Invalid IP version mode! Choose from (1, 2, 3).")
 
 
-def process_cidrs(log, domain_list_path: str, ipv_mode: str) -> None:
+def process_cidrs(log, domain_list_path: str, ipv_mode: str, cache: bool) -> None:
     ipv4_list, ipv6_list = separate_ips(log, ipv_mode)
     ipv4_list, ipv6_list = list(set(ipv4_list)), list(set(ipv6_list))
     total_cidrs = 0
 
     if ipv_mode == '1':
-        ipv4_cidrs = asyncio.run(get_cidrs(ipv4_list))
+        ipv4_cidrs = asyncio.run(get_cidrs(ipv4_list, cache))
         if ipv4_cidrs:
             ipv4_output_file = os.path.join(
                 os.path.dirname(domain_list_path), 
@@ -308,7 +375,7 @@ def process_cidrs(log, domain_list_path: str, ipv_mode: str) -> None:
 
 
     elif ipv_mode == '2':
-        ipv6_cidrs = asyncio.run(get_cidrs(ipv6_list))
+        ipv6_cidrs = asyncio.run(get_cidrs(ipv6_list, cache))
         if ipv6_cidrs:
             ipv6_output_file = os.path.join(
                 os.path.dirname(domain_list_path),
@@ -329,7 +396,7 @@ def process_cidrs(log, domain_list_path: str, ipv_mode: str) -> None:
         
 
     elif ipv_mode == '3':
-        ipv4_cidrs, ipv6_cidrs = asyncio.run(get_cidrs(ipv4_list)), asyncio.run(get_cidrs(ipv6_list))
+        ipv4_cidrs, ipv6_cidrs = asyncio.run(get_cidrs(ipv4_list, cache)), asyncio.run(get_cidrs(ipv6_list, cache))
 
         if ipv4_cidrs:
             ipv4_output_file = os.path.join(
@@ -370,11 +437,11 @@ def process_cidrs(log, domain_list_path: str, ipv_mode: str) -> None:
     else:
         logging.error("Invalid IP version mode!")
         raise ValueError("Invalid IP version mode! Choose from (1, 2, 3).")
-
-
-def format_output(log: str, domain_list_path: str, ipv_mode: str, flag: str = ["cidrs", "ips"]) -> None:
+    
+    
+def format_output(log: str, domain_list_path: str, ipv_mode: str, cache: bool = False, flag: str = ["cidrs", "ips"], type: str = "nslookup") -> None:
     if flag == "cidrs":
-        process_cidrs(log, domain_list_path, ipv_mode)
+        process_cidrs(log, domain_list_path, ipv_mode, cache)
 
     elif flag == "ips":
         process_ips(log, domain_list_path, ipv_mode)
@@ -396,13 +463,28 @@ def main() -> None:
             logging.error(f"File '{args.filename}' not found.")
 
     elif args.mode == "2":
-        log_data, domain_path = resolve_domains(args.filename, args.os_type, args.ipv_mode)
+        if args.os_type and args.ipv_mode and args.filename and args.testmode:
+            log_data, domain_path = resolve_domains(args.filename, args.os_type, args.ipv_mode, args.testmode)
 
         if log_data and domain_path:
             flag = "cidrs" if args.cidrs else "ips"
-            format_output(log_data, domain_path, args.ipv_mode, flag)
+            cache = True if args.cache else False
+            format_output(log_data, domain_path, args.ipv_mode, cache, flag)
         else:
             logging.error("Failed to get IPs. Exiting.")
+            
+    elif args.mode == "3":
+        if args.port_number:
+            ips = get_port(args.port_number)
+            if not ips:
+                logging.warning(f"No active connections found on port {args.port_number}.")
+            else:
+                logging.info(f"Found {len(ips)} IP(s) on port {args.port_number}.")
+                if args.filename:
+                    ip2host(ips, args.port_number, args.filename)
+                else:
+                    ip2host(ips, args.port_number)
+                
     else:
         logging.error("Invalid mode. Choose 1 or 2.")
 
