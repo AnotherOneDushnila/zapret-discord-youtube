@@ -48,6 +48,7 @@ HTTPS_PORT=${HTTPS_PORT:-443}
 QUIC_PORT=${QUIC_PORT:-443}
 UNBLOCKED_DOM=${UNBLOCKED_DOM:-iana.org}
 PARALLEL_OUT=/tmp/zapret_parallel
+SIM_SUCCESS_RATE=${SIM_SUCCESS_RATE:-10}
 
 HDRTEMP=/tmp/zapret-hdr
 
@@ -412,6 +413,13 @@ check_system()
 	else
 		uname -a
 	fi
+	[ -f /etc/os-release ] && {
+		. /etc/os-release
+		[ -n "$PRETTY_NAME" ] && echo "distro: $PRETTY_NAME"
+		[ -n "$OPENWRT_RELEASE" ] && echo "openwrt release: $OPENWRT_RELEASE"
+		[ -n "$OPENWRT_BOARD" ] && echo "openwrt board: $OPENWRT_BOARD"
+		[ -n "$OPENWRT_ARCH" ] && echo "openwrt arch: $OPENWRT_ARCH"
+	}
 	echo firewall type is $FWTYPE
 	echo CURL=$CURL
 	$CURL --version
@@ -804,7 +812,7 @@ nft_scheme()
 	make_comma_list iplist $3
 
 	nft add table inet $NFT_TABLE
-	nft "add chain inet $NFT_TABLE postnat { type filter hook output priority 102; }"
+	nft "add chain inet $NFT_TABLE postnat { type filter hook postrouting priority 102; }"
 	nft "add rule inet $NFT_TABLE postnat meta nfproto ipv${IPV} $1 dport $2 mark and $DESYNC_MARK == 0 ip${ipver} daddr {$iplist} ct mark set ct mark or $DESYNC_MARK queue num $QNUM"
 	# for strategies with incoming packets involved (autottl)
 	nft "add chain inet $NFT_TABLE prenat { type filter hook prerouting priority -102; }"
@@ -1064,6 +1072,17 @@ ws_curl_test()
 	# $3 - domain
 	# $4,$5,$6, ... - ws params
 	local code ws_start=$1 testf=$2 dom=$3
+
+	[ "$SIMULATE" = 1 ] && {
+		n=$(random 0 99)
+		if [ "$n" -lt "$SIM_SUCCESS_RATE" ]; then
+			echo "SUCCESS"
+			return 0
+		else
+			echo "FAILED"
+			return 7
+		fi
+	}
 	shift
 	shift
 	shift
@@ -1086,7 +1105,7 @@ tpws_curl_test()
 		shift; shift;
 		strategy="$@"
 		strategy_append_extra_tpws
-		report_append "ipv${IPV} $dom $testf : tpws ${WF:+$WF }$strategy"
+		report_append "$dom" "$testf ipv${IPV}" "tpws ${WF:+$WF }$strategy"
 	}
 	return $code
 }
@@ -1105,7 +1124,7 @@ pktws_curl_test()
 	[ "$code" = 0 ] && {
 		strategy="$@"
 		strategy_append_extra_pktws
-		report_append "ipv${IPV} $dom $testf : $PKTWSD ${WF:+$WF }$strategy"
+		report_append "$dom" "$testf ipv${IPV}" "$PKTWSD ${WF:+$WF }$strategy"
 	}
 	return $code
 }
@@ -1145,8 +1164,35 @@ tpws_curl_test_update()
 
 report_append()
 {
+	# $1 - domain
+	# $2 - test function + ipver
+	# $3 - value
+	local hashstr hash hashvar hashcountvar val ct
+
+	# save resources if only one domain
+	[ "$DOMAINS_COUNT" -gt 1 ] && {
+		hashstr="$2 : $3"
+		hash="$(echo -n "$hashstr" | md5f)"
+		hashvar=RESHASH_${hash}
+		hashcountvar=${hashvar}_COUNTER
+
+		NRESHASH=${NRESHASH:-0}
+
+		eval val="\$$hashvar"
+		if [ -n "$val" ]; then
+			eval ct="\$$hashcountvar"
+			ct=$(($ct + 1))
+			eval $hashcountvar="\$ct"
+		else
+			eval $hashvar=\"$hashstr\"
+			eval $hashcountvar=1
+			eval RES_$NRESHASH="\$hash"
+			NRESHASH=$(($NRESHASH+1))
+		fi
+	}
+
 	NREPORT=${NREPORT:-0}
-	eval REPORT_${NREPORT}=\"$@\"
+	eval REPORT_${NREPORT}=\"$2 $1 : $3\"
 	NREPORT=$(($NREPORT+1))
 }
 report_print()
@@ -1157,6 +1203,22 @@ report_print()
 		eval s=\"\${REPORT_$n}\"
 		echo $s
 		n=$(($n+1))
+	done
+}
+result_intersection_print()
+{
+	local n=0 hash hashvar hashcountvar ct val
+	while : ; do
+		eval hash=\"\$RES_$n\"
+		[ -n "$hash" ] || break
+		hashvar=RESHASH_${hash}
+		hashcountvar=${hashvar}_COUNTER
+		eval ct=\"\$$hashcountvar\"
+		[ "$ct" = "$DOMAINS_COUNT" ] && {
+			eval val=\"\$$hashvar\"
+			echo "$val"
+		}
+		n=$(($n + 1))
 	done
 }
 report_strategy()
@@ -1170,22 +1232,25 @@ report_strategy()
 		strategy="$(echo "$strategy" | xargs)"
 		echo "!!!!! $1: working strategy found for ipv${IPV} $2 : $3 $strategy !!!!!"
 		echo
-#		report_append "ipv${IPV} $2 $1 : $3 ${WF:+$WF }$strategy"
 		return 0
 	else
 		echo "$1: $3 strategy for ipv${IPV} $2 not found"
 		echo
-		report_append "ipv${IPV} $2 $1 : $3 not working"
+		report_append "$2" "$1 ipv${IPV}" "$3 not working"
 		return 1
 	fi
-}
-test_has_split()
-{
-	contains "$1" split || contains "$1" disorder
 }
 test_has_fakedsplit()
 {
 	contains "$1" fakedsplit || contains "$1" fakeddisorder
+}
+test_has_split()
+{
+	contains "$1" multisplit || contains "$1" multidisorder || test_has_fakedsplit "$1"
+}
+test_has_hostfakesplit()
+{
+	contains "$1" hostfakesplit
 }
 test_has_fake()
 {
@@ -1211,7 +1276,7 @@ pktws_curl_test_update_vary()
 	# $5,$6,... - strategy
 
 	local testf=$1 sec=$2 domain=$3 desync=$4 proto splits= pos fake ret=1
-	local fake1=- fake2=- fake3=-
+	local fake1=- fake2=- fake3=- fake4=-
 	
 	shift; shift; shift; shift
 	
@@ -1220,18 +1285,27 @@ pktws_curl_test_update_vary()
 	test_has_fake $desync && {
 		fake1="--dpi-desync-fake-$proto=0x00000000"
 		[ "$sec" = 0 ] || {
-			fake2="--dpi-desync-fake-tls=0x00000000 --dpi-desync-fake-tls=! --dpi-desync-fake-tls-mod=rnd,rndsni,dupsid"
-			fake3="--dpi-desync-fake-tls-mod=rnd,dupsid,rndsni,padencap"
+			fake2='--dpi-desync-fake-tls=0x00000000 --dpi-desync-fake-tls=! --dpi-desync-fake-tls-mod=rnd,rndsni,dupsid'
+			# this splits actual fake to '1603' and modified standard fake from offset 2
+			fake3='--dpi-desync-fake-tls=0x1603 --dpi-desync-fake-tls=!+2 --dpi-desync-fake-tls-mod=rnd,dupsid,rndsni --dpi-desync-fake-tcp-mod=seq'
+			fake4='--dpi-desync-fake-tls-mod=rnd,dupsid,rndsni,padencap'
 		}
 	}
 	if test_has_fakedsplit $desync ; then
 		splits="method+2 midsld"
 		[ "$sec" = 0 ] || splits="1 midsld"
+		# do not send fake first
+		fake1='--dpi-desync-fakedsplit-mod=altorder=1'
 	elif test_has_split $desync ; then
 		splits="method+2 midsld"
 		[ "$sec" = 0 ] || splits="1 midsld 1,midsld"
 	fi
-	for fake in '' "$fake1" "$fake2" "$fake3" ; do
+	test_has_hostfakesplit $desync && {
+		fake1="--dpi-desync-hostfakesplit-mod=altorder=1"
+		fake2="--dpi-desync-hostfakesplit-midhost=midsld"
+		fake3="--dpi-desync-hostfakesplit-mod=altorder=1 --dpi-desync-hostfakesplit-midhost=midsld"
+	}
+	for fake in '' "$fake1" "$fake2" "$fake3" "$fake4" ; do
 		[ "$fake" = "-" ] && continue
 		if [ -n "$splits" ]; then
 			for pos in $splits ; do
@@ -1258,7 +1332,7 @@ pktws_check_domain_http_bypass_()
 	# $3 - domain
 
 	local ok ttls s f f2 e desync pos fooling frag sec="$2" delta orig splits
-	local need_split need_disorder need_fakedsplit need_fakeddisorder need_fake need_wssize
+	local need_split need_disorder need_fakedsplit need_hostfakesplit need_fakeddisorder need_fake need_wssize
 	local splits_http='method+2 midsld method+2,midsld'
 	local splits_tls='2 1 sniext+1 sniext+4 host+1 midsld 1,midsld 1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1'
 
@@ -1303,25 +1377,33 @@ pktws_check_domain_http_bypass_()
 		done
 
 		need_fakedsplit=1
+		need_hostfakesplit=1
 		need_fakeddisorder=1
 		need_fake=1
-		for desync in fake ${need_split:+fakedsplit fake,multisplit fake,fakedsplit} ${need_disorder:+fakeddisorder fake,multidisorder fake,fakeddisorder}; do
+		for desync in fake ${need_split:+fakedsplit fake,multisplit fake,fakedsplit hostfakesplit fake,hostfakesplit} ${need_disorder:+fakeddisorder fake,multidisorder fake,fakeddisorder}; do
 			[ "$need_fake" = 0 ] && test_has_fake "$desync" && continue
 			[ "$need_fakedsplit" = 0 ] && contains "$desync" fakedsplit && continue
+			[ "$need_hostfakesplit" = 0 ] && contains "$desync" hostfakesplit && continue
 			[ "$need_fakeddisorder" = 0 ] && contains "$desync" fakeddisorder && continue
 			ok=0
 			for ttl in $ttls; do
-				pktws_curl_test_update_vary $1 $2 $3 $desync --dpi-desync-ttl=$ttl $e && {
-					[ "$SCANLEVEL" = quick ] && return
-					ok=1
-					need_wssize=0
-					break
-				}
+				# orig-ttl=1 with start/cutoff limiter drops empty ACK packet in response to SYN,ACK. it does not reach DPI or server.
+				# missing ACK is transmitted in the first data packet of TLS/HTTP proto
+				for f in '' '--orig-ttl=1 --orig-mod-start=s1 --orig-mod-cutoff=d1'; do
+					pktws_curl_test_update_vary $1 $2 $3 $desync --dpi-desync-ttl=$ttl $f $e && {
+						[ "$SCANLEVEL" = quick ] && return
+						ok=1
+						need_wssize=0
+						[ "$SCANLEVEL" = force ] || break
+					}
+				done
+				[ "$ok" = 1 ] && break
 			done
 			# only skip tests if TTL succeeded. do not skip if TTL failed but fooling succeeded
 			[ $ok = 1 -a "$SCANLEVEL" != force ] && {
 				[ "$desync" = fake ] && need_fake=0
 				[ "$desync" = fakedsplit ] && need_fakedsplit=0
+				[ "$desync" = hostfakesplit ] && need_hostfakesplit=0
 				[ "$desync" = fakeddisorder ] && need_fakeddisorder=0
 			}
 			f=
@@ -1330,11 +1412,20 @@ pktws_check_domain_http_bypass_()
 			[ "$IPV" = 6 ] && f="$f hopbyhop hopbyhop2"
 			for fooling in $f; do
 				ok=0
+				f2=
 				pktws_curl_test_update_vary $1 $2 $3 $desync --dpi-desync-fooling=$fooling $e && {
 					warn_fool $fooling $desync
 					[ "$SCANLEVEL" = quick ] && return
 					need_wssize=0
 					ok=1
+				}
+				[ "$fooling" = badseq ] && {
+					[ "$ok" = 1 -a "$SCANLEVEL" != force ] && continue
+					# --dpi-desync-badseq-increment=0 leaves modified by default ack increment
+					pktws_curl_test_update_vary $1 $2 $3 $desync --dpi-desync-fooling=$fooling --dpi-desync-badseq-increment=0 $e && {
+						[ "$SCANLEVEL" = quick ] && return
+						need_wssize=0
+					}
 				}
 				[ "$fooling" = md5sig ] && {
 					[ "$ok" = 1 -a "$SCANLEVEL" != force ] && continue
@@ -1400,18 +1491,30 @@ pktws_check_domain_http_bypass_()
 
 		need_fakedsplit=1
 		need_fakeddisorder=1
+		need_hostfakesplit=1
 		need_fake=1
-		for desync in fake ${need_split:+fakedsplit fake,multisplit fake,fakedsplit} ${need_disorder:+fakeddisorder fake,multidisorder fake,fakeddisorder}; do
+		for desync in fake ${need_split:+fakedsplit fake,multisplit fake,fakedsplit hostfakesplit fake,hostfakesplit} ${need_disorder:+fakeddisorder fake,multidisorder fake,fakeddisorder}; do
 			[ "$need_fake" = 0 ] && test_has_fake "$desync" && continue
 			[ "$need_fakedsplit" = 0 ] && contains "$desync" fakedsplit && continue
+			[ "$need_hostfakesplit" = 0 ] && contains "$desync" hostfakesplit && continue
 			[ "$need_fakeddisorder" = 0 ] && contains "$desync" fakeddisorder && continue
 			ok=0
-			for orig in '' 1 2 3; do
-				for delta in 1 2 3 4 5; do
-					pktws_curl_test_update_vary $1 $2 $3 $desync ${orig:+--orig-autottl=+$orig} --dpi-desync-ttl=1 --dpi-desync-autottl=-$delta $e && ok=1
+			# orig-ttl=1 with start/cutoff limiter drops empty ACK packet in response to SYN,ACK. it does not reach DPI or server.
+			# missing ACK is transmitted in the first data packet of TLS/HTTP proto
+			for delta in 1 2 3 4 5; do
+				for f in '' '--orig-ttl=1 --orig-mod-start=s1 --orig-mod-cutoff=d1'; do
+					pktws_curl_test_update_vary $1 $2 $3 $desync --dpi-desync-ttl=1 --dpi-desync-autottl=-$delta $f $e && ok=1
+					[ "$ok" = 1 -a "$SCANLEVEL" != force ] && break
 				done
-				[ "$ok" = 1 -a "$SCANLEVEL" != force ] && break
 			done
+			[ "$SCANLEVEL" = force ] && {
+				for orig in 1 2 3; do
+					for delta in 1 2 3 4 5; do
+						pktws_curl_test_update_vary $1 $2 $3 $desync ${orig:+--orig-autottl=+$orig} --dpi-desync-ttl=1 --dpi-desync-autottl=-$delta $e && ok=1
+					done
+					[ "$ok" = 1 -a "$SCANLEVEL" != force ] && break
+				done
+			}
 			[ "$ok" = 1 ] &&
 			{
 				echo "WARNING ! although autottl worked it requires testing on multiple domains to find out reliable delta"
@@ -1421,6 +1524,7 @@ pktws_check_domain_http_bypass_()
 				[ "$SCANLEVEL" = force ] || {
 					[ "$desync" = fake ] && need_fake=0
 					[ "$desync" = fakedsplit ] && need_fakedsplit=0
+					[ "$desync" = hostfakesplit ] && need_hostfakesplit=0
 					[ "$desync" = fakeddisorder ] && need_fakeddisorder=0
 				}
 			}			
@@ -1629,17 +1733,19 @@ check_domain_prolog()
 
 	local code
 
+	[ "$SIMULATE" = 1 ] && return 0
+
 	echo
 	echo \* $1 ipv$IPV $3
 
 	echo "- checking without DPI bypass"
 	curl_test $1 $3 && {
-		report_append "ipv${IPV} $3 $1 : working without bypass"
+		report_append "$3" "$1 ipv${IPV}" "working without bypass"
 		[ "$SCANLEVEL" = force ] || return 1
 	}
 	code=$?
 	curl_has_reason_to_continue $code || {
-		report_append "ipv${IPV} $3 $1 : test aborted, no reason to continue. curl code $(curl_translate_code $code)"
+		report_append "$3" "$1 ipv${IPV}" "test aborted, no reason to continue. curl code $(curl_translate_code $code)"
 		return 1
 	}
 	return 0
@@ -1823,6 +1929,7 @@ ask_params()
 			[ -n "$dom" ] && DOMAINS="$dom"
 		}
 	}
+	DOMAINS_COUNT="$(echo "$DOMAINS" | wc -w | trim)"
 
 	local IPVS_def=4
 	[ -n "$IPVS" ] || {
@@ -2202,6 +2309,18 @@ cleanup
 echo
 echo \* SUMMARY
 report_print
+[ "$DOMAINS_COUNT" -gt 1 ] && {
+	echo
+	echo \* COMMON
+	result_intersection_print
+	echo
+	[ "$SCANLEVEL" = force ] || {
+		echo "blockcheck optimizes test sequence. To save time some strategies can be skipped if their test is considered useless."
+		echo "That's why COMMON intersection can miss strategies that would work for all domains."
+		echo "Use \"force\" scan level to test all strategies and generate trustable intersection."
+		echo "Current scan level was \"$SCANLEVEL\"".
+	}
+}
 echo
 echo "Please note this SUMMARY does not guarantee a magic pill for you to copy/paste and be happy."
 echo "Understanding how strategies work is very desirable."

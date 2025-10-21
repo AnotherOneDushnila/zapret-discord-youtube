@@ -10,3 +10,5 @@ lists/scripts/cidr_cache.json
 lists/scripts/README.md
 **venv
 **__pycache__
+bin_update.bat
+bin_update.sh

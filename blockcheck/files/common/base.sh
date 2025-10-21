@@ -405,14 +405,17 @@ std_ports()
 has_bad_ws_options()
 {
 	# $1 - nfqws/tpws opts
-	# ПРИМЕЧАНИЕ ДЛЯ РАСПРОСТРАНИТЕЛЕЙ КОПИПАСТЫ
-	# ЭТОТ КОД СДЕЛАН СПЕЦИАЛЬНО ДЛЯ ВАС, ЧТОБЫ ВЫ НЕ ПОСТИЛИ В СЕТЬ ПЛОХИЕ РЕЦЕПТЫ
-	# ЕСЛИ ВАМ ХОЧЕТСЯ ЕГО УДАЛИТЬ И НАПИСАТЬ ИНСТРУКЦИЮ КАК ЕГО УДАЛЯТЬ, ВЫ ДЕЛАЕТЕ ХРЕНОВУЮ УСЛУГУ. НАПИШИТЕ ЛУЧШЕ custom script.
-	# custom script - ЭТО ФАЙЛИК, КОТОРЫЙ ДОСТАТОЧНО СКОПИРОВАТЬ В НУЖНУЮ ДИРЕКТОРИЮ, ЧТОБЫ ОН СДЕЛАЛ ТОЖЕ САМОЕ, НО ЭФФЕКТИВНО.
-	# ФИЛЬТРАЦИЯ ПО IPSET В ЯДРЕ НЕСРАВНИМО ЭФФЕКТИВНЕЕ, ЧЕМ ПЕРЕКИДЫВАТЬ ВСЕ ПАКЕТЫ В nfqws И ТАМ ФИЛЬТРОВАТЬ
-	# --ipset СУЩЕСТВУЕТ ТОЛЬКО ДЛЯ ВИНДЫ И LINUX СИСТЕМ БЕЗ ipset (НАПРИМЕР, Android).
-	# И ТОЛЬКО ПО ЭТОЙ ПРИЧИНЕ ОНО НЕ ВЫКИНУТО ПОЛНОСТЬЮ ИЗ LINUX ВЕРСИИ
-	contains "$1" "--ipset"
+
+	contains "$1" "--ipset" && {
+		echo
+		echo "WARNING !!! --ipset parameter is present"
+		echo "It's OK if you only specialize already redirected traffic and also process the rest."
+		echo "If you redirect port X to process several IPs from the list and do nothing with the rest - IT'S VERY INEFFECTIVE !"
+		echo "Kernel ipsets should be used instead. Write custom scripts and filter IPs in kernel."
+		echo
+	}
+	
+	return 1
 }
 check_bad_ws_options()
 {
@@ -428,8 +431,5 @@ check_bad_ws_options()
 }
 help_bad_ws_options()
 {
-	echo "WARNING ! you have specified --ipset option"
-	echo "WARNING ! it would work but on ${UNAME:-$(uname)} it's not the best option"
-	echo "WARNING ! you should use kernel mode sets. they are much more efficient."
-	echo "WARNING ! to use ipsets you have to write your own custom script"
+	echo "WARNING ! BAD options detected"
 }
