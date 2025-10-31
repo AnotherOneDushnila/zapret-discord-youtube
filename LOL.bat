@@ -1,13 +1,15 @@
-@REM @echo off
+@echo off
 chcp 65001 > nul
 :: 65001 - UTF-8
 
 cd /d "%~dp0"
 call service.bat status_zapret
+call service.bat load_hide_switch
+call service.bat load_game_filter
 echo:
 
-set "BIN=%~dp0bin\"
-set "FAKE=%~dp0bin\fake\"
+set "BIN=%~dp0bin\%HideSwitchStatus%\"
+set "FAKE=%~dp0fake\"
 set "LISTS=%~dp0lists\"
 
 start "zapret: %~n0" /min "%BIN%winws.exe" --wf-tcp=80,443,2099,8393-8400,5222,5223 --wf-udp=443,50000-50100 ^

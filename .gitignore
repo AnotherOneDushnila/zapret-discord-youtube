@@ -12,3 +12,4 @@ lists/scripts/README.md
 **__pycache__
 bin_update.bat
 bin_update.sh
+hide_switch.enabled

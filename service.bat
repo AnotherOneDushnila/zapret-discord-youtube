@@ -17,6 +17,11 @@ if "%~1"=="load_game_filter" (
     exit /b
 )
 
+if "%~1"=="load_hide_switch" (
+    call :hide_switch_status
+    exit /b
+)
+
 
 if "%1"=="admin" (
     echo Started with admin rights
@@ -33,6 +38,7 @@ setlocal EnableDelayedExpansion
 cls
 call :ipset_switch_status
 call :game_switch_status
+call :hide_switch_status
 
 set "menu_choice=null"
 echo =======================
@@ -42,10 +48,12 @@ echo 3. Check Status
 echo 4. Run Diagnostics
 echo 5. Check Bin Updates
 echo 6. Switch Game Filter (%GameFilterStatus%)
-echo 7. Switch ipset (%IPsetStatus%)
-echo 8. Update ipset list
+echo 7. Switch Hide Mode (%HideSwitchStatus%)
+echo 8. Switch ipset (%IPsetStatus%)
+echo 9. Update ipset list
+echo 10. Update Bin
 echo 0. Exit
-set /p menu_choice=Enter choice (0-8): 
+set /p menu_choice=Enter choice (0-10): 
 
 if "%menu_choice%"=="1" goto service_install
 if "%menu_choice%"=="2" goto service_remove
@@ -53,9 +61,10 @@ if "%menu_choice%"=="3" goto service_status
 if "%menu_choice%"=="4" goto service_diagnostics
 if "%menu_choice%"=="5" goto service_check_updates
 if "%menu_choice%"=="6" goto game_switch
-if "%menu_choice%"=="7" goto ipset_switch
-if "%menu_choice%"=="8" goto ipset_update
-if "%menu_choice%"=="9" goto bin_update
+if "%menu_choice%"=="7" goto hide_switch
+if "%menu_choice%"=="8" goto ipset_switch
+if "%menu_choice%"=="9" goto ipset_update
+if "%menu_choice%"=="10" goto bin_update
 if "%menu_choice%"=="0" exit /b
 goto menu
 
@@ -383,6 +392,22 @@ if exist "%gameFlagFile%" (
 exit /b
 
 
+:hide_switch_status
+chcp 437 > nul
+
+set "hideSwitchFile=%~dp0bin\hide_switch.enabled"
+
+if exist "%hideSwitchFile%" (
+    set "HideSwitchStatus=hide"
+    set "Switch=1"
+) else (
+    set "HideSwitchStatus=default"
+    set "Switch=0"
+)
+
+exit /b
+
+
 :game_switch
 chcp 437 > nul
 cls
@@ -394,6 +419,24 @@ if not exist "%gameFlagFile%" (
 ) else (
     echo Disabling game filter...
     del /f /q "%gameFlagFile%"
+    call :PrintYellow "Restart the zapret to apply the changes"
+)
+
+pause
+goto menu
+
+
+:hide_switch
+chcp 437 > nul
+cls
+
+if not exist "%hideSwitchFile%" (
+    echo Enabling Hide mode...
+    echo HIDE > "%hideSwitchFile%"
+    call :PrintYellow "Restart the zapret to apply the changes"
+) else (
+    echo Disabling Hide mode...
+    del /f /q "%hideSwitchFile%"
     call :PrintYellow "Restart the zapret to apply the changes"
 )
 
