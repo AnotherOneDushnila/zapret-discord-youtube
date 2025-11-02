@@ -23,7 +23,7 @@ CURL=${CURL:-curl}
 . "$ZAPRET_BASE/common/fwtype.sh"
 . "$ZAPRET_BASE/common/virt.sh"
 
-BIN="$(cd "$EXEDIR/../../bin"; pwd)"
+BIN="$(cd "$EXEDIR/../../bin/hide"; pwd)"
 DOMAINS_DEFAULT=${DOMAINS_DEFAULT:-rutracker.org}
 QNUM=${QNUM:-59780}
 SOCKS_PORT=${SOCKS_PORT:-1993}
