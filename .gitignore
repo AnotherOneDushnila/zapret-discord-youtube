@@ -13,3 +13,4 @@ lists/scripts/README.md
 bin_update.bat
 bin_update.sh
 hide_switch.enabled
+game_filter.enabled

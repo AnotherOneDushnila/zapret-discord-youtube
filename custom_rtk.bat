@@ -9,7 +9,7 @@ call service.bat load_game_filter
 echo:
 
 set "BIN=%~dp0bin\%HideSwitchStatus%\"
-set "FAKE=%~dp0fake\"
+set "FAKE=%~dp0bin\fake\"
 set "LISTS=%~dp0lists\"
 
 start "zapret: %~n0" /min "%BIN%winws.exe" --wf-tcp=80,443,%GameFilter% --wf-udp=443,%GameFilter% ^
