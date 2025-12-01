@@ -67,3 +67,4 @@ pvp.net
 rgpub.io
 seasonvar.ru
 telemetry.sgp.pvp.net
+meet.google.com
