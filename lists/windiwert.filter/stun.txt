@@ -1,0 +1,4 @@
+udp and
+udp.PayloadLength >= 20 and
+udp.Payload32[1] = 0x2112A442 and
+udp.Payload16[0] & 0xC000 = 0

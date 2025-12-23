@@ -6,6 +6,7 @@ blockcheck/LM
 lists/scripts/bc-args-list.txt
 lists/blocked-hosts-rtk.txt
 lists/scripts/old/
+lists/scripts/args/
 lists/scripts/cidr_cache.json
 lists/scripts/README.md
 **venv
@@ -14,3 +15,4 @@ bin_update.bat
 bin_update.sh
 hide_switch.enabled
 game_filter.enabled
+lists/scripts/all-domains.txt

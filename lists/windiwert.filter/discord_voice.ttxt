@@ -1,0 +1,5 @@
+udp and
+udp.DstPort>=50000 and udp.DstPort<=50100 and
+udp.PayloadLength >= 60 and
+udp.PayloadLength <= 300 and
+udp.Payload16[0] & 0xC000 = 0x8000

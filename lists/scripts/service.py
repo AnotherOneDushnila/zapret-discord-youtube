@@ -32,7 +32,7 @@ class Service:
             parser.add_argument(
                 "-tm",
                 '--testmode',
-                default='comparsion',
+                default='nslookup',
                 type=str,
                 help="Enable and choose testmode ('nslookup')"
             )
@@ -101,8 +101,7 @@ class Service:
             parser.add_argument(
                 "-f", 
                 dest="filename",
-                required=True,
-                default="host.txt",
+                default=None,
                 help="File with hostname(s) to resolve (default: hosts.txt)"
             )
 

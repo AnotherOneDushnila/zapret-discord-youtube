@@ -53,19 +53,40 @@ def resolve_domains(domain_file: str, os_type: str, ipv_mode: str, testmode: str
                         logging.error("Invalid OS type. Use 'w' (Windows), 'l' (Linux) or 'm' (macOS).")
                         return None, None
                 
-                # TODO: format curl outuput & maybe add curl support to get_domains
-                # elif testmode == "curl":
-                #     if os_type == 'w':
-                #         cmds.append(["curl", "-svo", "NULL", f"https://{domain}"])
-                #     elif os_type in ("m", "l"):
-                #         cmds.append(["curl", "-svo", "/dev/null", f"https://{domain}"])
-                #     else:
-                #         logging.error("Invalid OS type. Use 'w' (Windows), 'l' (Linux) or 'm' (macOS).")
-                #         return None, None
 
-                else:
-                    logging.error("Invalid testmode type! Choose from ('nslookup', 'curl', 'comparsion').")
-                    return None, None
+                elif testmode == "dig":
+                    if os_type in ("m", "l"):
+                        if ipv_mode in ("1", "3"):
+                            cmds.append(["dig", "+short", domain, "A"])
+                        if ipv_mode in ("2", "3"):
+                            cmds.append(["dig", "+short", domain, "AAAA"])
+
+                    elif os_type == "w":
+                        if ipv_mode in ("1", "3"):
+                            cmds.append(["dig", "+short", domain, "A"])
+                        if ipv_mode in ("2", "3"):
+                            cmds.append(["dig", "+short", domain, "AAAA"])
+
+                    else:
+                        logging.error("Invalid OS type. Use 'w' (Windows), 'l' (Linux) or 'm' (macOS).")
+                        return None, None
+
+                elif testmode == "curl":
+                    if os_type in ("m", "l"):
+                        if ipv_mode in ("1", "3"):
+                            cmds.append(["dig", "+short", domain, "A"])
+                        if ipv_mode in ("2", "3"):
+                            cmds.append(["dig", "+short", domain, "AAAA"])
+
+                    elif os_type == "w":
+                        if ipv_mode in ("1", "3"):
+                            cmds.append(["dig", "+short", domain, "A"])
+                        if ipv_mode in ("2", "3"):
+                            cmds.append(["dig", "+short", domain, "AAAA"])
+
+                    else:
+                        logging.error("Invalid OS type. Use 'w' (Windows), 'l' (Linux) or 'm' (macOS).")
+                        return None, None
 
 
             output = ""
@@ -105,7 +126,7 @@ async def get_cidrs(ips: List[str], cache_flag: bool) -> Set[str]:
     async def fetch(ip: str, session: aiohttp.ClientSession) -> List[str]:
         key = f"cidr:{ip}"
         
-        if cache and ip in cache:
+        if cache and key in cache:
             logging.debug(f"[CACHE] CIDRs for {ip} found and executed.")
             return json.loads(cache[key])
         
@@ -127,7 +148,8 @@ async def get_cidrs(ips: List[str], cache_flag: bool) -> Set[str]:
 
                 return cidrs
             
-        except Exception:
+        except Exception as e:
+            logging.error(f"Error fetching CIDR for {ip}: {e}", exc_info=True)
             return []
 
     async with aiohttp.ClientSession() as session:
@@ -207,39 +229,34 @@ def sort_ips(array: set[str]) -> List[str]:
     return sorted(array, key=parse)
 
 
-def separate_ips(log: str, ipv_mode: str, type: str) -> Optional[Union[List[str], List[str]]]:
+def separate_ips(log: str, ipv_mode: str, testmode: str = ["nslookup", "dig"]) -> Optional[Union[List[str], List[str]]]:
     excluded_ips = {'1.1.1.1', '8.8.8.8', '8.8.4.4', '192.168.0.1'}
     ipv6_list, ipv4_list = [], []
 
-    lines = log.splitlines()
-    total_lines = len(lines)
-    i = 0
+    if testmode == "nslookup":
+        lines = log.splitlines()
+        total_lines = len(lines)
+        i = 0
 
-    while i < total_lines:
-        line = lines[i].strip()
+        while i < total_lines:
+            line = lines[i].strip()
 
-        ip_candidates = []
+            ip_candidates = []
 
-        if line.startswith("Address:") or line.startswith("Addresses:"):
-            address_part = line.partition(":")[2].strip()
-            if address_part:
-                ip_candidates.append(address_part)
-            else:
-                i += 1
-                while i < total_lines:
-                    next_line = lines[i].strip()
-                    if not next_line or next_line.startswith(("Server:", "Name:", "Address", "Alias")):
-                        break
-                    ip_candidates.extend(next_line.split())
+            if line.startswith("Address:") or line.startswith("Addresses:"):
+                address_part = line.partition(":")[2].strip()
+                if address_part:
+                    ip_candidates.append(address_part)
+                else:
                     i += 1
-                i -= 1
-
-        else:
-            parts = line.split()
-            if len(parts) == 1:
-                ip_candidates.append(parts[0])
-           
-
+                    while i < total_lines:
+                        next_line = lines[i].strip()
+                        if not next_line or next_line.startswith(("Server:", "Name:", "Address", "Alias")):
+                            break
+                        ip_candidates.extend(next_line.split())
+                        i += 1
+                    i -= 1
+        
             for ip in ip_candidates:
                 try:
                     ip = ip.strip()
@@ -257,7 +274,23 @@ def separate_ips(log: str, ipv_mode: str, type: str) -> Optional[Union[List[str]
                 except ValueError:
                     continue
 
-        i += 1
+            i += 1
+
+
+    elif testmode == "dig":
+        for line in log.splitlines():
+            line = line.strip()
+            try:
+                ip_obj = ipaddress.ip_address(line)
+                if line in excluded_ips or ip_obj.is_link_local:
+                    continue
+                if ip_obj.version == 4 and ipv_mode in ('1', '3'):
+                    ipv4_list.append(line)
+                elif ip_obj.version == 6 and ipv_mode in ('2', '3'):
+                    ipv6_list.append(line)
+            except ValueError:
+                continue
+        
 
     if not ipv4_list and not ipv6_list:
         logging.warning("No valid IPs found in nslookup output.")
