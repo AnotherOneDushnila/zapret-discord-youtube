@@ -26,6 +26,20 @@ def run_proc(cmd: List[str]) -> str:
 
 
 def resolve_domains(domain_file: str, os_type: str, ipv_mode: str, testmode: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Docstring for resolve_domains
+    
+    :param domain_file: Description
+    :type domain_file: str
+    :param os_type: Type of your operating system 
+    :type os_type: str
+    :param ipv_mode: Which ips we`re searching for
+    :type ipv_mode: str
+    :param testmode: System util to find ips
+    :type testmode: str
+    :return: Log from sys utils
+    :rtype: Tuple[str | None, str | None]
+    """
     try:
         domain_list_path = service.find_file(domain_file)
     except FileNotFoundError as e:
@@ -74,15 +88,15 @@ def resolve_domains(domain_file: str, os_type: str, ipv_mode: str, testmode: str
                 elif testmode == "curl":
                     if os_type in ("m", "l"):
                         if ipv_mode in ("1", "3"):
-                            cmds.append(["dig", "+short", domain, "A"])
+                            cmds.append(["curl", "-s", domain, "A"])
                         if ipv_mode in ("2", "3"):
-                            cmds.append(["dig", "+short", domain, "AAAA"])
+                            cmds.append(["curl", "-s", domain, "AAAA"])
 
                     elif os_type == "w":
                         if ipv_mode in ("1", "3"):
-                            cmds.append(["dig", "+short", domain, "A"])
+                            cmds.append(["curl.exe", "-s", domain, "A"])
                         if ipv_mode in ("2", "3"):
-                            cmds.append(["dig", "+short", domain, "AAAA"])
+                            cmds.append(["curl.exe", "-s", domain, "AAAA"])
 
                     else:
                         logging.error("Invalid OS type. Use 'w' (Windows), 'l' (Linux) or 'm' (macOS).")
@@ -116,6 +130,16 @@ def save_cache_to_disk(cache: dict[str, List[str]]):
 
 
 async def get_cidrs(ips: List[str], cache_flag: bool) -> Set[str]:
+    """
+    Docstring for get_cidrs
+    
+    :param ips: List of ips to merge
+    :type ips: List[str]
+    :param cache_flag: Cache or no cache
+    :type cache_flag: bool
+    :return: Merged ips/cidrs
+    :rtype: Set[str]
+    """
     results = []
 
     if cache_flag:
@@ -165,44 +189,62 @@ async def get_cidrs(ips: List[str], cache_flag: bool) -> Set[str]:
     return set(results)
 
 
-def get_port(port: int) -> Optional[List[str]]:
-    result = set()
-    try:
-        for conn in psutil.net_connections(kind='inet'):
-            if conn.raddr and conn.status == psutil.CONN_ESTABLISHED:
-                if conn.raddr[1] == port:
-                    result.add(conn.raddr[0])
-    except Exception as e:
-        logging.error(f"Error getting port connections: {e}", exc_info=True)
-        return None
-    return list(result)
+# def get_port(port: int) -> Optional[List[str]]:
+#     """
+#     Docstring for get_port
+    
+#     :param port: Description
+#     :type port: int
+#     :return: Description
+#     :rtype: List[str] | None
+#     """
+#     result = set()
+#     try:
+#         for conn in psutil.net_connections(kind='inet'):
+#             if conn.raddr and conn.status == psutil.CONN_ESTABLISHED:
+#                 if conn.raddr[1] == port:
+#                     result.add(conn.raddr[0])
+#     except Exception as e:
+#         logging.error(f"Error getting port connections: {e}", exc_info=True)
+#         return None
+#     return list(result)
 
 
-def ip2host(ips: List[str], port: int, filename: str = "port_connections.txt") -> Optional[str]:
-    seen = set()
-    output_lines = []
+# def ip2host(ips: List[str], filename: str = "port_connections.txt") -> None:
+#     """
+#     Function that allows to find out which ip uses which port
+    
+#     :param ips: List of ips.
+#     :type ips: List[str]
+#     :param filename: Name of the file where the ports will be saved.
+#     :type filename: str
+#     :return: None
+#     :rtype: str | None
+#     """
+#     seen = set()
+#     output_lines = []
 
-    for ip in ips:
-        try:
-            domain = socket.gethostbyaddr(ip)[0]
-            logging.info(f"{ip} resolved to {domain}")
-        except Exception:
-            domain = None
-            logging.debug(f"Could not resolve {ip}")
+#     for ip in ips:
+#         try:
+#             domain = socket.gethostbyaddr(ip)[0]
+#             logging.info(f"{ip} resolved to {domain}")
+#         except Exception:
+#             domain = None
+#             logging.debug(f"Could not resolve {ip}")
 
-        line = f"{domain} : {ip} : {port}" if domain else f"{ip} : {port}"
-        if line not in seen:
-            seen.add(line)
-            output_lines.append(line)
+#         line = f"{domain} : {ip}" if domain else f'{ip}'
+#         if line not in seen:
+#             seen.add(line)
+#             output_lines.append(line)
 
-    if output_lines:
-        with open(filename, "a", encoding="utf-8") as f:
-            for line in output_lines:
-                f.write(line + "\n")
+#     if output_lines:
+#         with open(filename, "a", encoding="utf-8") as f:
+#             for line in output_lines:
+#                 f.write(line + "\n")
 
-        logging.info(f"Saved {len(output_lines)} connection(s) to {filename}")
-    else:
-        logging.info("No new connections to save.")
+#         logging.info(f"Saved {len(output_lines)} connection(s) to {filename}")
+#     else:
+#         logging.info("No new connections to save.")
 
 
 @service.log_file_change
@@ -229,7 +271,19 @@ def sort_ips(array: set[str]) -> List[str]:
     return sorted(array, key=parse)
 
 
-def separate_ips(log: str, ipv_mode: str, testmode: str = ["nslookup", "dig"]) -> Optional[Union[List[str], List[str]]]:
+def separate_ips(log: str, ipv_mode: str, testmode: str = ["nslookup", "dig", 'curl']) -> Optional[Union[List[str], List[str]]]:
+    """
+    Function, that selects ips from a log.
+    
+    :param log: Log from system utils (curl, nslookup, dig).
+    :type log: str
+    :param ipv_mode: IpV4 or IpV6.
+    :type ipv_mode: str
+    :param testmode: Defines, which system util are we using to get ips [nslookup, curk, dig].
+    :type testmode: str
+    :return: List of ips or nothing.
+    :rtype: List[str] | None
+    """
     excluded_ips = {'1.1.1.1', '8.8.8.8', '8.8.4.4', '192.168.0.1'}
     ipv6_list, ipv4_list = [], []
 
@@ -290,8 +344,25 @@ def separate_ips(log: str, ipv_mode: str, testmode: str = ["nslookup", "dig"]) -
                     ipv6_list.append(line)
             except ValueError:
                 continue
-        
+    
 
+    elif testmode == "curl":
+        data = json.loads(log)
+        answers = data.get("Answer", [])
+        for item in answers:
+            try:
+                ip = item.get("data")
+                if not ip:
+                    continue
+
+                ip_obj = ipaddress.ip_address(ip)
+                if ip_obj.version == 4 and ipv_mode in ("1", "3"):
+                    ipv4_list.append(ip)
+                elif ip_obj.version == 6 and ipv_mode in ("2", "3"):
+                    ipv6_list.append(ip)
+            except ValueError:
+                continue
+    
     if not ipv4_list and not ipv6_list:
         logging.warning("No valid IPs found in nslookup output.")
         return
@@ -299,6 +370,17 @@ def separate_ips(log: str, ipv_mode: str, testmode: str = ["nslookup", "dig"]) -
 
 
 def process_ips(log: str, domain_list_path: str, ipv_mode: str) -> None:
+    """
+    Function, that becomes and writes down the ipsets (ips only)
+    
+    :param log: Log from system utils (curl, nslookup, dig). Here it`s simply passed to 'separate_ips'.
+    :param domain_list_path: Path to hostlist to resolve.
+    :type domain_list_path: str
+    :param ipv_mode: IpV4 or IpV6
+    :type ipv_mode: str
+    :param cache: Flag, on which depends, are we using cache during getting of ips, or not.
+    :type cache: bool
+    """
     ipv4_list, ipv6_list = separate_ips(log, ipv_mode)
     ipv4_list, ipv6_list = list(set(ipv4_list)), list(set(ipv6_list))
     total_ips = len(ipv4_list) + len(ipv6_list)
@@ -382,6 +464,17 @@ def process_ips(log: str, domain_list_path: str, ipv_mode: str) -> None:
 
 
 def process_cidrs(log, domain_list_path: str, ipv_mode: str, cache: bool) -> None:
+    """
+    Function, that becomes and writes down the ipsets (cidr sets)
+    
+    :param log: Log from system utils (curl, nslookup, dig). Here it`s simply passed to 'separate_ips'.
+    :param domain_list_path: Path to hostlist to resolve.
+    :type domain_list_path: str
+    :param ipv_mode: IpV4 or IpV6
+    :type ipv_mode: str
+    :param cache: Flag, on which depends, are we using cache during getting of ips, or not.
+    :type cache: bool
+    """
     ipv4_list, ipv6_list = separate_ips(log, ipv_mode)
     ipv4_list, ipv6_list = list(set(ipv4_list)), list(set(ipv6_list))
     total_cidrs = 0
@@ -506,17 +599,17 @@ def main() -> None:
         else:
             logging.error("Failed to get IPs. Exiting.")
             
-    elif args.mode == "3":
-        if args.port_number:
-            ips = get_port(args.port_number)
-            if not ips:
-                logging.warning(f"No active connections found on port {args.port_number}.")
-            else:
-                logging.info(f"Found {len(ips)} IP(s) on port {args.port_number}.")
-                if args.filename:
-                    ip2host(ips, args.port_number, args.filename)
-                else:
-                    ip2host(ips, args.port_number)
+    # elif args.mode == "3":
+    #     if args.port_number:
+    #         ips = get_port(args.port_number)
+    #         if not ips:
+    #             logging.warning(f"No active connections found on port {args.port_number}.")
+    #         else:
+    #             logging.info(f"Found {len(ips)} IP(s) on port {args.port_number}.")
+    #             if args.filename:
+    #                 ip2host(ips, args.port_number, args.filename)
+    #             else:
+    #                 ip2host(ips, args.port_number)
                 
     else:
         logging.error("Invalid mode. Choose 1 or 2.")

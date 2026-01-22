@@ -33,6 +33,7 @@ class Service:
                 "-tm",
                 '--testmode',
                 default='nslookup',
+                choices=['nslookup', 'curl', 'dig'],
                 type=str,
                 help="Enable and choose testmode ('nslookup')"
             )
@@ -124,6 +125,13 @@ class Service:
                 required=True,
                 default="hostlist.txt",
                 help="File with domains to manage (default: blocked-hosts.txt)"
+            )
+
+            parser.add_argument(
+                '-om',
+                dest='only_main',
+                default=False,
+                help='Boolean param that allows you to filter sundomains (default: False).'
             )
 
         else:

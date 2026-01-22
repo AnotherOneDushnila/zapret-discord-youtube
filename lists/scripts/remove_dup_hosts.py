@@ -1,5 +1,5 @@
-import os, logging
-from typing import Tuple
+import os, logging, tldextract
+from typing import Tuple, List
 from service import Service
 
 
@@ -24,7 +24,7 @@ priority_substrings = [
 
 
 @service.log_file_change
-def remove_duplicates(filepath: str) -> None:
+def remove_duplicates(filepath: str, only_main: bool) -> None:
     def sort_key(line: str) -> Tuple[int, str]:
         for index, substring in enumerate(priority_substrings):
             if substring in line:
@@ -33,6 +33,9 @@ def remove_duplicates(filepath: str) -> None:
     
     with open(filepath, "r", encoding="utf-8") as f:
         lines = f.read().splitlines()
+    
+    if only_main:
+        lines = only_main_dom(lines)
 
     unique = list(set(lines))
 
@@ -46,11 +49,22 @@ def remove_duplicates(filepath: str) -> None:
         return None
 
 
+def only_main_dom(domains: List[str]) -> list:
+    res = []
+
+    for dom in domains:
+        ext = tldextract.extract(dom)
+        res.append(f"{ext.domain}.{ext.suffix}")
+        
+    return res
+
+
 def main() -> None:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     args = service.argparse().parse_args()
     filepath = service.find_file(args.filename)
-    remove_duplicates(filepath)
+    only_main = args.only_main
+    remove_duplicates(filepath, only_main)
 
 
 if __name__ == "__main__":
